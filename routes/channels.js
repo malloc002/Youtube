@@ -1,5 +1,6 @@
 const express = require('express')
 const router = express.Router()
+const conn = require('../mariadb')
 
 router.use(express.json())
 
@@ -11,51 +12,52 @@ router
     .route('/')
     .get(function(req, res){ //채널 전체 조회
         //json array로 보낼 예정
-        if(db.size) //db.size != 0
+        var {user_id} = req.body
+        user_id = parseInt(user_id)
+
+        // 예외처리 2가지
+        // 1. user_id가 body에 없으면
+        // 2. user_id가 가진 channel이 없으면
+
+        if(user_id) // 1번 예외 처리
         {
-            var {id} = req.body
-
-            // 예외처리 2가지
-            // 1. id가 body에 없으면
-            // 2. id가 가진 channel이 없으면
-
-            if(id) // 1번 예외 처리
-            {
-                var channels = [] //json array는 대괄호 json들을 묶어 줌 [{}, {}, {}]
-
-                db.forEach(function(value){
-                    if(value.id === id)
-                        channels.push(value)
-                })
-
-                if(channels.length) // 2번 예외처리
+            conn.query(
+                'SELECT * FROM channels WHERE user_id = ?', user_id,
+                function(err, results)
                 {
-                    res.status(200).json(channels)
+                    if(results.length)
+                    {
+                        res.status(200).json(results)
+                    }
+                    else {
+                        notFoundChannel(res)
+                    }
                 }
-                else{
-                    notFoundChannel()
-                }
-            }
-            else{
-                res.status(404).json({
-                    message: "로그인이 필요한 페이지입니다."
-                })
-            }
+            )
         }
         else{
-            notFoundChannel()
+            res.status(404).json({
+                message: "로그인이 필요한 페이지입니다."
+            })
         }
-    }) 
+    })
     .post(function(req, res){ //채널 생성
 
-        if(req.body.channelTitle)
-        {
-            let channel = req.body
-            db.set(idx++, channel)
+        const {name, userId} = req.body
 
-            res.status(201).json({
-                message: `${db.get(idx - 1).channelTitle}님 채널을 응원합니다.`
-            })
+        if(name && userId)
+        {
+            conn.query(
+                'INSERT INTO channels (name, user_id) VALUES (?, ?)', [name, userId],
+                function(err, results)
+                {
+                    res.status(201).json(results)
+                }
+            )
+
+            // res.status(201).json({
+            //     message: `${db.get(idx - 1).channelTitle}님 채널을 응원합니다.`
+            // })
         }
         else {
             res.status(400).json({
@@ -64,21 +66,28 @@ router
         }
     })
 
+
      
 router
-    .route('/:idx')
+    .route('/:id')
     .get(function(req, res){ //채널 개별 조회
-        let {idx} = req.params
-        idx = parseInt(idx)
+        let {id} = req.params
+        id = parseInt(id)
 
-        var channel = db.get(idx)
-        if(channel)
-        {
-            res.status(200).json(channel)
-        }
-        else {
-            notFoundChannel()
-        }
+        conn.query(
+            'SELECT * FROM channels WHERE id = ?', id,
+            function(err, results, fields)
+            {
+                if(results.length)
+                {
+                    res.status(200).json(results)
+                }
+                else{
+                    notFoundChannel(res)
+                }
+            }
+        )
+        
     })
     .put(function(req, res){ //채널 개별 수정
         let {idx} = req.params
@@ -126,7 +135,7 @@ router
         }
     })
 
-function notFoundChannel(){
+function notFoundChannel(res){
     res.status(404).json({
         message: "채널 정보를 찾을 수 없습니다."
     })

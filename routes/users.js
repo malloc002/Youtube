@@ -4,83 +4,60 @@ const router = express.Router()
 
 const conn = require('../mariadb')
 
-connection.query(
-    'SELECT * FROM `users`',
-    function(err, results, fields){
-        let {id, email, name, created_at} = results[0]
-
-        console.log(id)
-        console.log(email)
-        console.log(name)
-        console.log(created_at)
-        // console.log(fields)
-    }
-)
-
 router.use(express.json()) //http 외의 모듈 'json'
 
-let db = new Map()
-var idx = 1
-
-//로그인Z
+//로그인
 router.post('/login', function(req, res){
-    //id가 디비에 저장된 회원인지 확인
+    //email이 디비에 저장된 회원인지 확인
     //pwd도 맞는지 비교
-    let {id, pwd} = req.body
+    const {email, pwd} = req.body
 
-    var loginUser = {}
-
-    db.forEach(function(user, idx){
-        if(user.id === id)
-        {
-            loginUser = user
+    let sql = `SELECT * FROM user WHERE email = ?`
+    conn.query(sql, email,
+        function(err, results){ //순서에 따라서 데이터가 들어감. fields는 안쓰니까 빼줘도 됨.
+            var loginUser = results[0] //우선 loginUser에 저장
+            if(loginUser && loginUser.pwd == pwd) //loginUser가 존재하고, loginUser의 비번이랑 입력받은 비번이 동일할 때
+            {
+                res.status(200).json({
+                    message: `${loginUser.name}님 로그인 되었습니다.`
+                })
+            }  
+            else { //loginUser가 없거나 pwd가 다를 때
+                res.status(404).json({
+                    message: "이메일 또는 비밀번호가 틀렸습니다." //loginUser가 없다 == email이 틀렸다. 
+                })
+            }
         }
-    })
-
-    if(isExist(loginUser)) //loginUser가 있으면 아이디가 db에 있는 것
-    {
-        if(loginUser.pwd === pwd)
-        {
-            res.status(200).json({
-                message: `${loginUser.name}님 로그인 되었습니다.`
-            })
-        }
-        else {
-            res.status(400).json({
-                message: "비밀번호가 틀렸습니다."
-            })
-        }
-    }
-    else { //Object.keys(loginUser).length == 0이라는 뜻 -> 아이디가 db에 없음
-        res.status(404).json({
-            message: "입력하신 아이디는 없는 아이디입니다."
-        })
-    }
+    )
 })
-
-function isExist(obj){
-    if(Object.keys(obj).length)
-    {
-        return true
-    }
-    else {
-        return false
-    }
-}
 
 //회원가입
 router.post('/join', function(req, res){
-    let {id, pwd, name} = req.body
+    let {email, pwd, name, contact} = req.body
 
-    console.log(req.body)
-
-    if(id && pwd && name)
+    if(email && pwd && name)
     {
-        
-        db.set(id, req.body)
-        res.status(201).json({
-            message: `${db.get(id).name}님, 가입되었습니다.`
-        })
+        if(contact){
+            let sql = `INSERT INTO users (email, pwd, name, contact) VALUES (?, ?, ?, ?)`
+            let values = [email, pwd, name, contact]
+            conn.query(sql , values,
+                function(err, results){
+                    res.status(201).json(results)
+                }
+            )
+        }
+        else {
+            let sql = `INSERT INTO users (email, pwd, name) VALUES (?, ?, ?)`
+            let values = [email, pwd, name]
+            conn.query(sql, values,
+                function(err, results){
+                    res.status(201).json(results)
+                }
+            )
+        }
+        // res.status(201).json({
+        //     message: `${db.get(id).name}님, 가입되었습니다.`
+        // })
     }
     else {
         res.status(400).json({
@@ -90,33 +67,46 @@ router.post('/join', function(req, res){
 })
 
 router.route('/users')
-    .get(function(req, res){
-        let {id} = req.body
-    
-        const user = db.get(id)
-        if(user)
+    .get(function(req, res){ //회원 개별 조회
+        let {email} = req.body
+
+        if(email)
         {
-            res.status(200).json({
-                id: user.id,
-                name: user.name
-            })
+            let sql = `SELECT * FROM users WHERE email = ?`
+            conn.query(sql, email,
+                function(err, results){
+                    if(results.length)
+                    {
+                        res.status(200).json(results)
+                    }
+                    else {
+                        res.status(404).json({
+                            message: "회원 정보가 없습니다."
+                        })
+                    }
+                }
+            )
         }
         else {
-            res.status(404).json({
-                message: "회원 정보가 없습니다."
+            res.status(400).json({
+                message: "필요한 정보 누락!"
             })
         }
     })
-    .delete(function(req, res){
-        let {id} = req.body
+    .delete(function(req, res){ //회원 개별 탈퇴
+        let {email} = req.body
     
-        const user = db.get(id)
-        if(user)
+        if(email)
         {
-            db.delete(id)
-            res.json({
-                message: `${user.name}님, 다음에 또 뵙겠습니다.`
-            })
+            let sql = `DELETE FROM users WHERE email = ?`
+            conn.query(sql, email,
+                function(err, results){
+                    res.status(200).json(results)
+                }
+            )
+            // res.json({
+            //     message: `${user.name}님, 다음에 또 뵙겠습니다.`
+            // })
         }
         else {
             res.status(404).json({
@@ -126,45 +116,3 @@ router.route('/users')
     })
 
 module.exports = router
-
-/*
-//회원 개별 조회
-app.get('/users/:idx', function(req, res){
-    let {idx} = req.params
-    idx = parseInt(idx)
-
-    const user = db.get(idx)
-    if(user)
-    {
-        res.status(200).json({
-            id: user.id,
-            name: user.name
-        })
-    }
-    else {
-        res.status(404).json({
-            message: "회원 정보가 없습니다."
-        })
-    }
-})
-
-//회원 개별 탈퇴
-app.delete('/users/:idx', function(req, res){
-    let {idx} = req.params
-    idx = parseInt(idx)
-
-    const user = db.get(idx)
-    if(user)
-    {
-        db.delete(idx)
-        res.json({
-            message: `${idx}번 삭제 완료. ${user.name}님, 다음에 또 뵙겠습니다.`
-        })
-    }
-    else {
-        res.status(404).json({
-            message: "회원 정보가 없습니다."
-        })
-    }
-})
-*/
